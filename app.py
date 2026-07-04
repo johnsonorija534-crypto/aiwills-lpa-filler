@@ -5,6 +5,7 @@ from datetime import datetime
 
 app = Flask(__name__)
 GHL_API_KEY = 'pit-41146bbe-c1a9-4e7e-904f-de91d98d7ffd'
+LOCATION_ID = 'MzVD4CHOWxTi5fTfeZSh'
 SAVE_DIR = '/var/www/lpa-filler/completed_pdfs'
 os.makedirs(SAVE_DIR, exist_ok=True)
 
@@ -21,15 +22,34 @@ def fill_pdf(template_path, fields):
 
 def send_to_ghl(contact_id, location_id, lp3_link, lpc_link, donor_name):
     try:
-        headers = {'Authorization': f'Bearer {GHL_API_KEY}', 'Version': '2021-07-28', 'Content-Type': 'application/json'}
-        conv = requests.post('https://services.leadconnectorhq.com/conversations/', headers=headers, json={'contactId': contact_id, 'locationId': location_id}, timeout=15)
+        headers = {
+            'Authorization': f'Bearer {GHL_API_KEY}',
+            'Version': '2021-07-28',
+            'Content-Type': 'application/json'
+        }
+        conv = requests.post(
+            'https://services.leadconnectorhq.com/conversations/',
+            headers=headers,
+            json={'contactId': contact_id, 'locationId': location_id},
+            timeout=15
+        )
         print(f"Conv: {conv.status_code} {conv.text[:200]}")
         conv_data = conv.json()
         conv_id = conv_data.get('conversation', {}).get('id') or conv_data.get('id')
         print(f"Conv ID: {conv_id}")
         if conv_id:
             body = f"LPA PDFs ready for {donor_name}\n\nLP3 Form: {lp3_link}\n\nLPC Form: {lpc_link}"
-            msg = requests.post('https://services.leadconnectorhq.com/conversations/messages', headers=headers, json={'type': 'TYPE_INTERNAL_COMMENT', 'conversationId': str(conv_id), 'body': body, 'html': f'<p>LPA PDFs for {donor_name}</p><p><a href="{lp3_link}">LP3 Download</a></p><p><a href="{lpc_link}">LPC Download</a></p>'}, timeout=15)
+            msg = requests.post(
+                'https://services.leadconnectorhq.com/conversations/messages',
+                headers=headers,
+                json={
+                    'type': 'TYPE_INTERNAL_COMMENT',
+                    'conversationId': str(conv_id),
+                    'body': body,
+                    'html': f'<p>LPA PDFs for {donor_name}</p><p><a href="{lp3_link}">LP3 Download</a></p><p><a href="{lpc_link}">LPC Download</a></p>'
+                },
+                timeout=15
+            )
             print(f"Msg: {msg.status_code} {msg.text[:200]}")
     except Exception as e:
         print(f"Error: {e}")
@@ -46,13 +66,21 @@ def download_pdf(filename):
 def fill_lpa():
     data = request.json or {}
     contact_id = data.get('contact_id', '')
-    location_id = data.get('location_id', '')
-    donor_first = data.get('donor_first_name', 'Unknown')
-    donor_last = data.get('donor_last_name', 'User')
+    location_id = data.get('location_id', '') or LOCATION_ID
+    donor_first = data.get('donor_first_name', '') or data.get('donor_first_n', 'Unknown')
+    donor_last = data.get('donor_last_name', '') or data.get('donor_last_n', 'User')
     donor_name = f"{donor_first} {donor_last}"
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     print(f"Request: {donor_name} | contact: {contact_id} | location: {location_id}")
-    lp3_fields = {'First names_2': donor_first, 'Last name_2': donor_last, 'Address 1_2': data.get('donor_address1', ''), 'First names_3': data.get('attorney1_first_name', ''), 'Last name_3': data.get('attorney1_last_name', '')}
+    lp3_fields = {
+        'First names_2': donor_first,
+        'Last name_2': donor_last,
+        'Address 1_2': data.get('donor_address1', '') or data.get('donor_addres', ''),
+        'First names_3': data.get('attorney1_first_name', '') or data.get('attorney1_firs', ''),
+        'Last name_3': data.get('attorney1_last_name', '') or data.get('attorney1_last', ''),
+        'First names': data.get('notify_first_name', '') or data.get('notify_first_na', ''),
+        'Last name': data.get('notify_last_name', '') or data.get('notify_last_na', ''),
+    }
     lpc_fields = {'Full name': donor_name}
     base_dir = os.path.dirname(os.path.abspath(__file__))
     lp3_pdf = fill_pdf(os.path.join(base_dir, 'LP3-Form-to-notify-people.pdf'), lp3_fields)
